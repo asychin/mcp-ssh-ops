@@ -1,0 +1,58 @@
+{
+  "name": "mcp-ssh-ops",
+  "version": "0.3.1",
+  "description": "Local MCP server for persistent, isolated SSH sessions and safe remote file operations via native OpenSSH",
+  "type": "module",
+  "bin": {
+    "mcp-ssh-ops": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "npm run build && tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
+  },
+  "keywords": [
+    "mcp",
+    "ssh",
+    "devops",
+    "openssh",
+    "controlmaster",
+    "remote-operations",
+    "sftp",
+    "model-context-protocol",
+    "ai-tools"
+  ],
+  "author": "Andrey Sychin <moloko@skofey.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/asychin/mcp-ssh-ops",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asychin/mcp-ssh-ops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/asychin/mcp-ssh-ops/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "diff": "9.0.0",
+    "ssh2": "1.17.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "24.10.0",
+    "@types/ssh2": "1.15.5",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2"
+  }
+}
