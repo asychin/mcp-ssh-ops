@@ -37,7 +37,7 @@ export interface ServerDependencies {
 
 export function createMcpServer(dependencies: ServerDependencies): McpServer {
   const { profiles, sessions } = dependencies;
-  const server = new McpServer({ name: 'mcp-ssh-ops', version: '0.3.1' });
+  const server = new McpServer({ name: 'mcp-ssh-ops', version: '0.3.2' });
 
   server.registerTool(
     'ssh_save_profile',

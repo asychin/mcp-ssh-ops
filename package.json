@@ -1,6 +1,6 @@
 {
   "name": "mcp-ssh-ops",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local MCP server for persistent, isolated SSH sessions and safe remote file operations via native OpenSSH",
   "type": "module",
   "bin": {

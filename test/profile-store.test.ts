@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -82,6 +82,23 @@ test('requires a private key path for key profiles', async () => {
       store.save('invalid', { host: 'host.test', username: 'user', auth_method: 'key' }),
       /INVALID_PROFILE/,
     );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('preserves existing SSH config mode and saves aliases before broad Host blocks', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mcp-ssh-ops-profile-mode-'));
+  try {
+    const paths = testPaths(directory);
+    await mkdir(paths.sshDir, { recursive: true });
+    await writeFile(paths.sshConfigFile, 'Host *\n    User default\n');
+    await chmod(paths.sshConfigFile, 0o640);
+    const store = new ProfileStore(paths);
+    await store.save('specific', { host: 'specific.example.test', username: 'operator', auth_method: 'agent' });
+    assert.equal((await stat(paths.sshConfigFile)).mode & 0o777, 0o640);
+    assert.match(await readFile(paths.sshConfigFile, 'utf8'), /^Host specific/m);
+    assert.equal((await store.get('specific')).host, 'specific.example.test');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

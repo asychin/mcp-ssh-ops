@@ -1,6 +1,29 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+*.tsbuildinfo
+
+# Test output
 coverage/
+.playwright-mcp/
+
+# Environment
 .env
+.env.*
+!.env.example
+
+# Local tooling config
 .devin/*.local.json
+
+# Logs
 *.log
+npm-debug.log*
+
+# Package artifacts
+*.tgz
+
+# OS files
+.DS_Store
+Thumbs.db

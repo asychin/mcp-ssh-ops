@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, chmod, glob, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, glob, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import * as z from 'zod/v4';
 import type { AppPaths } from './config.js';
@@ -125,7 +125,6 @@ export class ProfileStore {
     await chmod(this.paths.runtimeDir, 0o700);
 
     if (!await exists(this.paths.sshConfigFile)) await this.writeConfig('');
-    else await chmod(this.paths.sshConfigFile, 0o600);
 
     if (!await exists(this.paths.knownHostsFile)) {
       await writeFile(this.paths.knownHostsFile, '', { mode: 0o600, flag: 'wx' });
@@ -156,8 +155,14 @@ export class ProfileStore {
   private async writeConfig(content: string): Promise<void> {
     const temporaryPath = `${this.paths.sshConfigFile}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, content.endsWith('\n') ? content : `${content}\n`, { mode: 0o600, flag: 'wx' });
-      await chmod(temporaryPath, 0o600);
+      let mode = 0o600;
+      try {
+        mode = (await lstat(this.paths.sshConfigFile)).mode & 0o7777;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      await writeFile(temporaryPath, content.endsWith('\n') ? content : `${content}\n`, { mode, flag: 'wx' });
+      await chmod(temporaryPath, mode);
       await rename(temporaryPath, this.paths.sshConfigFile);
     } catch (error) {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
@@ -225,7 +230,12 @@ function replaceHostBlock(content: string, name: string, block: string): string 
     }
   }
   const blockLines = block.trimEnd().split('\n');
-  if (start === -1) return `${content.trimEnd()}\n\n${blockLines.join('\n')}\n`;
+  if (start === -1) {
+    const firstHost = lines.findIndex((line) => parseConfigWords(line)[0]?.toLowerCase() === 'host');
+    if (firstHost >= 0) lines.splice(firstHost, 0, ...blockLines, '');
+    else lines.push('', ...blockLines);
+    return `${lines.join('\n').trimEnd()}\n`;
+  }
   lines.splice(start, end - start, ...blockLines);
   return `${lines.join('\n').trimEnd()}\n`;
 }

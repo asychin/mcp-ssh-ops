@@ -2,6 +2,19 @@
 
 This file should be read at the start of the next development session and updated after significant changes.
 
+## 2026-10-09 - review and patch release 0.3.2
+
+### Changes
+
+- Bumped package, lockfile, and MCP server metadata from 0.3.1 to 0.3.2.
+- Reviewed the SSH, host-key, local-path, and file-transfer implementation. The existing native OpenSSH config remains authoritative for known_hosts behavior; review comments about the unreferenced legacy SFTP backend do not describe the active path.
+- Preserved existing SSH config permissions during atomic rewrites and inserted newly saved aliases before broad `Host *` blocks.
+- Added an explicit remote symlink rejection guard to the legacy SFTP patch implementation.
+
+### Checks
+
+- `npm run typecheck`, `npm test` (22 tests), `npm run build`, and `npm audit --omit=dev` passed; the audit found 0 vulnerabilities.
+
 ## 2026-08-20 — first working version
 
 ### Goal

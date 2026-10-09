@@ -89,7 +89,7 @@ export class SftpOperations {
 
   async applyPatch(path: string, patch: string, expectedSha256: string, createBackup: boolean) {
     const stats = await sftpStat(this.sftp, path, true);
-    if (!stats.isFile()) throw new McpOpsError('NOT_A_REGULAR_FILE', `${path} must be a regular file and not a symlink.`);
+    if (stats.isSymbolicLink() || !stats.isFile()) throw new McpOpsError('NOT_A_REGULAR_FILE', `${path} must be a regular file and not a symlink.`);
     if (stats.size > MAX_EDIT_FILE_BYTES) {
       throw new McpOpsError('EDIT_FILE_TOO_LARGE', `${path} is ${stats.size} bytes; the edit limit is ${MAX_EDIT_FILE_BYTES} bytes.`);
     }

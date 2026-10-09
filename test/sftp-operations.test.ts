@@ -7,6 +7,7 @@ import { SftpOperations } from '../src/ssh/sftp-operations.js';
 
 class FakeSftp {
   readonly files = new Map<string, Buffer>();
+  readonly symlinks = new Set<string>();
 
   stat(path: string, callback: (error: Error | undefined, stats: Stats) => void) {
     this.returnStats(path, callback);
@@ -71,7 +72,7 @@ class FakeSftp {
       isDirectory: () => false,
       isBlockDevice: () => false,
       isCharacterDevice: () => false,
-      isSymbolicLink: () => false,
+      isSymbolicLink: () => this.symlinks.has(path),
       isFIFO: () => false,
       isSocket: () => false,
     });
@@ -89,6 +90,19 @@ test('applies a hash-guarded patch and creates a backup', async () => {
   assert.equal(fake.files.get(path)?.toString(), after);
   assert.equal(result.sha256, sha256(after));
   assert.equal(fake.files.get(result.backup_path!)?.toString(), before);
+});
+
+test('rejects patching a remote symlink', async () => {
+  const fake = new FakeSftp();
+  const path = '/etc/example.conf';
+  const before = 'enabled=false\n';
+  fake.files.set(path, Buffer.from(before));
+  fake.symlinks.add(path);
+  const operations = new SftpOperations(fake as unknown as SFTPWrapper);
+  await assert.rejects(
+    operations.applyPatch(path, createPatch(path, before, 'enabled=true\n'), sha256(before), false),
+    /NOT_A_REGULAR_FILE/,
+  );
 });
 
 test('rejects a patch when the expected hash is stale', async () => {
