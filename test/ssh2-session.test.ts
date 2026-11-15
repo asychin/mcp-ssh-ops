@@ -226,6 +226,25 @@ test('ssh2 honors the false emitted by ssh -G for PubkeyAuthentication no', asyn
   } finally { await manager.closeAll(); await f.close(); }
 });
 
+test('ssh2 falls back from an unavailable agent and still reports terminal auth failures', async () => {
+  const f = await fixture();
+  let prompts = 0;
+  const manager = new SessionManager(f.paths, f.profiles, async () => { prompts += 1; return f.state.password; }, 'ssh2');
+  try {
+    const config = (await readFile(f.paths.sshConfigFile, 'utf8')).replace(/PreferredAuthentications password/gi, 'PreferredAuthentications publickey,password');
+    await writeFile(f.paths.sshConfigFile, `Host target\n PubkeyAuthentication yes\n IdentityAgent "${join(f.directory, 'missing-agent').replaceAll('\\', '/')}"\n${config}`);
+    const profile = await f.profiles.get('target');
+    await assert.rejects(manager.createSession(profile), /HOST_KEY_UNKNOWN/);
+    await manager.trustHost('127.0.0.1', f.port, f.fingerprint);
+    const session = await manager.createSession(profile);
+    assert.equal(session.status, 'connected');
+    assert.equal(prompts, 1);
+    f.state.password = 'new-synthetic-password';
+    await assert.rejects(manager.createSession(profile), /authentication/i);
+    assert.equal(prompts, 1);
+  } finally { await manager.closeAll(); await f.close(); }
+});
+
 function remoteCommand(files: Map<string, Buffer>, command: string): Buffer {
   const paths = [...command.matchAll(/'([^']*)'/g)].map((match) => match[1]!);
   const path = paths.at(-1)!;

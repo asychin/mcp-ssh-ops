@@ -152,7 +152,9 @@ export class Ssh2ConnectionFactory {
       const abort = () => finish(cancelled());
       signal?.addEventListener('abort', abort, { once: true });
       transport.client.once('ready', () => finish());
-      transport.client.once('error', finish);
+      transport.client.on('error', (error: Error & { level?: string }) => {
+        if (error.level !== 'agent') finish(error);
+      });
       transport.client.once('close', () => finish(new McpOpsError('SSH_CONNECTION_FAILED', 'SSH connection closed before authentication.')));
       transport.client.on('keyboard-interactive', (_name, _instructions, _language, prompts, respond) => {
         void (async () => {
