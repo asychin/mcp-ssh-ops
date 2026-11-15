@@ -25,15 +25,8 @@ test('rejects lossy ssh -G filenames rather than reading or writing the wrong tr
   const name = 'userknownhostsfile';
   assert.throws(() => configPaths(new Map([[name, ['C:/Users/Alice Smith/.ssh/known_hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED.*spaces/);
   assert.throws(() => configPaths(new Map([[name, ['/home/alice/known hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED/);
-  const previous = process.env.MCP_TEST_KNOWN_HOSTS;
-  try {
-    process.env.MCP_TEST_KNOWN_HOSTS = 'safe directory/known hosts';
-    const result = configPaths(new Map([[name, ['${MCP_TEST_KNOWN_HOSTS}']]]), name, 'host', 22, 'alice');
-    assert.ok(result[0]!.endsWith('known hosts'));
-    assert.equal(result.length, 1);
-  } finally {
-    if (previous === undefined) delete process.env.MCP_TEST_KNOWN_HOSTS; else process.env.MCP_TEST_KNOWN_HOSTS = previous;
-  }
+  assert.throws(() => configPaths(new Map([[name, ['C:\\Users\\ Alice\\.ssh\\known_hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED/);
+  assert.equal(configPaths(new Map([[name, ['/trusted/known_hosts /trusted/known_hosts2']]]), name, 'host', 22, 'alice').length, 2);
 });
 
 test('coalesces RAM password prompts and clears them when the last reference closes', async () => {

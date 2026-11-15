@@ -35,7 +35,7 @@ export function disabled(values: SshOptions, name: string): boolean {
 
 export function configPaths(values: SshOptions, name: string, host: string, port: number, username: string): string[] {
   return (values.get(name) ?? []).flatMap((value) => {
-    const paths = splitConfigPaths(value);
+    const paths = value.includes('"') ? splitConfigPaths(value) : value.split(/\s+/).filter(Boolean);
     if (paths.length > 1 && !value.includes('"') && paths.some((path) => !/^(?:[\\/]|[A-Za-z]:[\\/]|~[\\/]|%[dhrp%]|\$\{|none$|NUL$)/.test(path))) {
       throw new McpOpsError('SSH_CONFIG_UNSUPPORTED', `ssh -G cannot represent ${name} paths containing spaces unambiguously. Configure a known_hosts path without spaces, or use OpenSSH under WSL.`);
     }
