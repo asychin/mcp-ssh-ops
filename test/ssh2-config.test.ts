@@ -23,7 +23,7 @@ test('parses Windows paths and jump routes without a shell', () => {
 
 test('rejects lossy ssh -G filenames rather than reading or writing the wrong trust store', () => {
   const name = 'userknownhostsfile';
-  assert.throws(() => configPaths(new Map([[name, ['C:/Users/Alice Smith/.ssh/known_hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED.*literal spaces/);
+  assert.throws(() => configPaths(new Map([[name, ['C:/Users/Alice Smith/.ssh/known_hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED.*spaces/);
   assert.throws(() => configPaths(new Map([[name, ['/home/alice/known hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED/);
   const previous = process.env.MCP_TEST_KNOWN_HOSTS;
   try {

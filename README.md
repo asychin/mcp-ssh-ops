@@ -140,7 +140,7 @@ Helpers are launched without a shell, with a two-minute timeout and bounded outp
 
 Windows still needs `ssh.exe` for `ssh -G` (including `Include` and `Match` resolution), but does not require ControlMaster or a Unix askpass socket. Each session owns one `ssh2` transport; commands and SFTP use separate channels. A clone owns an independent transport.
 
-OpenSSH's `ssh -G` drops quotes from known_hosts path lists. Ambiguous paths with literal spaces are rejected rather than split into incorrect trust stores. Use `%d/.ssh/known_hosts` or `${VARIABLE}` in SSH config to preserve a path whose expanded home/directory contains spaces.
+OpenSSH's `ssh -G` drops quotes from known_hosts path lists. Ambiguous paths with spaces after expansion are rejected rather than split into incorrect trust stores. For this backend, configure known_hosts at a path without spaces; use OpenSSH under WSL if the existing trust-store layout must be preserved.
 
 Supported: passwords, keyboard-interactive prompts, agent authentication (including the Windows OpenSSH agent named pipe), literal Host aliases, explicit User/Port overrides, ProxyJump chains, configured user/global known_hosts, hashed/revoked host keys, and supported algorithm restrictions. OTP/other interactive challenges are not cached as passwords.
 

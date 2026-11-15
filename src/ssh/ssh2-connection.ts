@@ -155,7 +155,7 @@ export class Ssh2ConnectionFactory {
       transport.client.on('error', (error: Error & { level?: string }) => {
         if (error.level !== 'agent') finish(error);
       });
-      transport.client.once('close', () => finish(new McpOpsError('SSH_CONNECTION_FAILED', 'SSH connection closed before authentication.')));
+      transport.client.once('close', () => finish(new McpOpsError('SSH_CONNECTION_FAILED', `SSH connection to ${username}@${host}:${port} closed before authentication${parent ? ' over ProxyJump' : ''}.`)));
       transport.client.on('keyboard-interactive', (_name, _instructions, _language, prompts, respond) => {
         void (async () => {
           const answers: string[] = [];
