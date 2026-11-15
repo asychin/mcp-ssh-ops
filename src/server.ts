@@ -51,7 +51,7 @@ export function createMcpServer(dependencies: ServerDependencies): McpServer {
   server.registerTool(
     'ssh_list_profiles',
     {
-      description: 'List literal Host aliases from the user ~/.ssh/config and Include files, resolved natively with ssh -G. Live ControlMaster sessions remain isolated to this MCP process.',
+      description: 'List literal Host aliases from the user ~/.ssh/config and Include files, resolved natively with ssh -G. Live SSH sessions remain isolated to this MCP process.',
       inputSchema: z.object({}),
     },
     async () => jsonResult({ profiles: await profiles.list() }),
@@ -60,7 +60,7 @@ export function createMcpServer(dependencies: ServerDependencies): McpServer {
   server.registerTool(
     'ssh_create_session',
     {
-      description: 'Create an isolated native OpenSSH ControlMaster. host without username must match a literal Host in ~/.ssh/config. host with username still resolves all OpenSSH settings via ssh -G, then overrides only explicitly supplied fields. Also accepts profile_name. Passwords are never tool arguments.',
+      description: 'Create an isolated persistent SSH connection: native OpenSSH ControlMaster on Linux/macOS, ssh2 on Windows. host without username must match a literal Host in ~/.ssh/config. host with username resolves settings via ssh -G, then overrides only explicitly supplied fields. Unsupported Windows config is rejected explicitly. Passwords are never tool arguments.',
       inputSchema: z.object({
         profile_name: profileName.optional(),
         session_name: z.string().min(1).max(128).optional(),
@@ -124,7 +124,7 @@ export function createMcpServer(dependencies: ServerDependencies): McpServer {
         fingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/),
       }),
     },
-    async ({ host, port, fingerprint }) => jsonResult(sessions.trustHost(host, port, fingerprint)),
+    async ({ host, port, fingerprint }) => jsonResult(await sessions.trustHost(host, port, fingerprint)),
   );
 
   server.registerTool(
@@ -148,7 +148,7 @@ export function createMcpServer(dependencies: ServerDependencies): McpServer {
   server.registerTool(
     'ssh_clone_session',
     {
-      description: 'Create an independent OpenSSH ControlMaster with the same target settings. Agent/key authentication is automatic; password/passphrase is reused from this MCP process RAM for the same user and prompt while another session keeps that credential scope active.',
+      description: 'Create an independent persistent SSH connection with the same target settings. Agent authentication is automatic; passwords are reused only from this MCP process RAM while another session for that user remains active.',
       inputSchema: z.object({
         session_id: sessionId,
         session_name: z.string().min(1).max(128).optional(),

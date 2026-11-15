@@ -68,7 +68,7 @@ test('uses native ControlMaster, explicit host trust, RAM password reuse, and cl
     };
 
     await assert.rejects(manager.createSession(profile, 'first'), new RegExp(`HOST_KEY_UNKNOWN.*${fingerprint.replace(/[+]/g, '\\+')}`));
-    const approved = manager.trustHost('127.0.0.1', address.port, fingerprint);
+    const approved = await manager.trustHost('127.0.0.1', address.port, fingerprint);
     assert.equal(approved.status, 'approved');
     const first = await manager.createSession(profile, 'first');
     assert.match(first.session_id, /^first \| test-user@127\.0\.0\.1:\d+ \| [0-9a-f]{8}$/);
@@ -193,9 +193,9 @@ test('honors native ProxyJump and verifies jump and target host keys independent
     const profile = await profiles.get('target');
 
     await assert.rejects(manager.createSession(profile), new RegExp(`HOST_KEY_UNKNOWN.*${jumpFingerprint.replace(/[+]/g, '\\+')}`));
-    manager.trustHost('127.0.0.1', jumpAddress.port, jumpFingerprint);
+    await manager.trustHost('127.0.0.1', jumpAddress.port, jumpFingerprint);
     await assert.rejects(manager.createSession(profile), new RegExp(`HOST_KEY_UNKNOWN.*${targetFingerprint.replace(/[+]/g, '\\+')}`));
-    manager.trustHost('127.0.0.1', targetAddress.port, targetFingerprint);
+    await manager.trustHost('127.0.0.1', targetAddress.port, targetFingerprint);
     const session = await manager.createSession(profile, 'via-jump');
     const promptsAfterConnect = promptCount;
     const execution = await manager.exec(session.session_id, {
@@ -272,7 +272,7 @@ test('passes production native askpass output directly to OpenSSH', async () => 
       connect_timeout_ms: 5_000,
     };
     await assert.rejects(manager.createSession(profile), /HOST_KEY_UNKNOWN/);
-    manager.trustHost('127.0.0.1', address.port, fingerprint);
+    await manager.trustHost('127.0.0.1', address.port, fingerprint);
     const session = await manager.createSession(profile, 'native-askpass');
     assert.equal(session.status, 'connected');
     await manager.closeSession(session.session_id);

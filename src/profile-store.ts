@@ -85,15 +85,7 @@ export class ProfileStore {
   }
 
   async resolve(alias: string): Promise<SshProfile> {
-    await this.ensure();
-    const result = await runProcess('ssh', ['-G', '-F', this.paths.sshConfigFile, alias], {
-      timeout_ms: 10_000,
-      max_output_bytes: 1_048_576,
-    });
-    if (result.exit_code !== 0 || result.timed_out) {
-      throw new McpOpsError('SSH_CONFIG_INVALID', `Cannot resolve Host ${alias} from ${this.paths.sshConfigFile}: ${result.stderr.toString('utf8').trim()}`);
-    }
-    const values = parseSshG(result.stdout.toString('utf8'));
+    const values = await this.resolveOptions(alias);
     const preferred = values.get('preferredauthentications')?.[0]?.split(',') ?? [];
     const identityFile = values.get('identityfile')?.[0];
     const identitiesOnly = values.get('identitiesonly')?.[0] === 'yes';
@@ -117,6 +109,19 @@ export class ProfileStore {
         : DEFAULT_CONNECT_TIMEOUT_MS,
       ssh_alias: alias,
     };
+  }
+
+  async resolveOptions(alias: string, options: string[] = [], defaultsOnly = false): Promise<Map<string, string[]>> {
+    await this.ensure();
+    const config = defaultsOnly ? (process.platform === 'win32' ? 'NUL' : '/dev/null') : this.paths.sshConfigFile;
+    const result = await runProcess('ssh', ['-G', '-F', config, ...options, alias], {
+      timeout_ms: 10_000,
+      max_output_bytes: 1_048_576,
+    });
+    if (result.exit_code !== 0 || result.timed_out) {
+      throw new McpOpsError('SSH_CONFIG_INVALID', `Cannot resolve Host ${alias} from ${this.paths.sshConfigFile}: ${result.stderr.toString('utf8').trim()}`);
+    }
+    return parseSshG(result.stdout.toString('utf8'));
   }
 
   private async initialize(): Promise<void> {

@@ -1,11 +1,11 @@
 # MCP SSH Ops
 
-A local MCP server for DevOps tasks via native OpenSSH. Each MCP session is a persistent `ControlMaster` connection; commands and file operations open additional channels through its control socket without repeated TCP/SSH handshakes.
+A local MCP server for DevOps tasks over persistent SSH connections. Linux/macOS use native OpenSSH `ControlMaster`; Windows uses the `ssh2` Node.js library. Each MCP session authenticates once; commands and file operations open additional channels on that transport without repeated TCP/SSH handshakes.
 
 ## Features
 
-- Multiple concurrent SSH sessions with human-readable IDs, names, and separate master PIDs.
-- Full use of the user's native OpenSSH config.
+- Multiple concurrent SSH sessions with human-readable IDs and names; separate master PIDs on Linux/macOS.
+- Native OpenSSH config resolution via `ssh -G` on every platform; full OpenSSH behavior on Linux/macOS and explicit unsupported-setting errors on Windows.
 - Native `Host`, `HostName`, `Include`, `Match`, `ProxyJump`, multi-hop, `IdentityFile`, SSH certificates, hardware keys, and `ssh-agent`.
 - Clone as a separate independent ControlMaster.
 - Passwords and passphrases go through a local askpass broker, stored only in the MCP process RAM and never sent to the agent.
@@ -120,7 +120,29 @@ ssh -S <control-socket> -o ControlMaster=auto -o ControlPersist=300 ... <Host> t
 
 The `true` command is only needed for initial authentication. After it, OpenSSH keeps the master alive.
 
-If the key is already in the agent, no prompt appears. If a password or passphrase is required, the native `ksshaskpass` is launched; KDialog and Zenity are used as fallbacks.
+If the key is already in the agent, no prompt appears. Otherwise a local graphical password dialog is used. On Windows, keys must already be loaded in an agent; MCP does not read private keys.
+
+### Desktop password dialogs
+
+Linux selection is based on the available desktop tools, not the distribution:
+
+1. The `SSH_ASKPASS` inherited when MCP starts, then a system `ssh-askpass` helper.
+2. Desktop-preferred helpers (KDialog on KDE, GNOME askpass/Zenity, LXQt askpass).
+3. Remaining installed providers: `ksshaskpass`, `gnome-ssh-askpass`, `lxqt-openssh-askpass`, Zenity, KDialog, and Yad.
+
+Both Wayland and X11 are supported when the selected helper supports the running display server. The graphical session environment must be inherited by the MCP process. Install a compatible helper if none is present. Missing executables try the next provider; cancellation or failure stops immediately instead of opening another password window.
+
+Windows uses Windows Credential UI via Windows PowerShell, without saving credentials. The password applies to the SSH username resolved from the profile, not the editable username field in the Windows dialog. macOS uses an AppleScript dialog with a hidden answer; it does not access or save to Keychain.
+
+Helpers are launched without a shell, with a two-minute timeout and bounded output. Secrets return over a private child-process pipe, never MCP stdio, arguments, environment variables, or temporary files. The MCP cache is RAM-only; a user-selected external askpass helper may have its own wallet/storage policy.
+
+### Windows transport compatibility
+
+Windows still needs `ssh.exe` for `ssh -G` (including `Include` and `Match` resolution), but does not require ControlMaster or a Unix askpass socket. Each session owns one `ssh2` transport; commands and SFTP use separate channels. A clone owns an independent transport.
+
+Supported: passwords, keyboard-interactive prompts, agent authentication (including the Windows OpenSSH agent named pipe), literal Host aliases, explicit User/Port overrides, ProxyJump chains, configured user/global known_hosts, hashed/revoked host keys, and supported algorithm restrictions. OTP/other interactive challenges are not cached as passwords.
+
+Private key files are never read by MCP. Load keys with `ssh-add` first. `IdentitiesOnly`, explicit certificates, ProxyCommand, agent forwarding, and other non-default OpenSSH settings that cannot be preserved are rejected with `SSH_CONFIG_UNSUPPORTED`, not silently ignored. Certificate-only host-key policies are rejected; the backend does not implement OpenSSH host-certificate validation. Use the existing OpenSSH backend inside WSL when full OpenSSH feature parity is required.
 
 ## Host Key Verification
 
@@ -163,7 +185,7 @@ ssh_upload_file    local → remote
 ssh_download_file  remote → local
 ```
 
-Both operations use the SFTP channel of the existing ControlMaster and do not create a new SSH connection.
+Both operations use SFTP channels of the existing SSH transport and do not create a new SSH connection.
 
 Safety rules:
 
@@ -225,13 +247,13 @@ Metadata is included in exec, stat/list/read, upload/download, patch, and close 
 |---|---|
 | `ssh_save_profile` | Write/replace a single Host block |
 | `ssh_list_profiles` | Show Host aliases and resolved parameters |
-| `ssh_create_session` | Create a ControlMaster |
+| `ssh_create_session` | Create a persistent SSH transport |
 | `ssh_trust_host` | Approve a specific pending fingerprint |
-| `ssh_list_sessions` | Show the current agent's masters |
-| `ssh_session_info` | Show target, ProxyJump, PID, and state |
-| `ssh_clone_session` | Create an independent master |
-| `ssh_close_session` | Run `ssh -O exit` |
-| `ssh_exec` | Execute a command via the master |
+| `ssh_list_sessions` | Show the current agent's sessions |
+| `ssh_session_info` | Show target, ProxyJump, backend, PID (if applicable), and state |
+| `ssh_clone_session` | Create an independent transport |
+| `ssh_close_session` | Close the transport and release cached credentials |
+| `ssh_exec` | Execute a command via the existing transport |
 | `ssh_stat` | Get path metadata |
 | `ssh_list_directory` | Bounded directory listing |
 | `ssh_read_file` | Read a byte range of a file |
@@ -253,6 +275,8 @@ $XDG_RUNTIME_DIR/mcp-ssh-ops/agent-<pid>-<random>/
 - A heartbeat keeps masters alive while the agent is running.
 - `ControlPersist=300` limits orphan-master lifetime after abnormal termination.
 - Normal termination calls `ssh -O exit` for each session.
+
+On Windows the transports live directly in the MCP process, with no ControlMaster child or control socket. Disconnect/termination closes the transport and clears its final credential reference. Session descriptions include `backend: "openssh" | "ssh2"` and `master_pid: null` for ssh2.
 
 ## Installation
 
@@ -302,7 +326,7 @@ After rebuilding the backend, the MCP process needs to be restarted.
 
 ## Limitations
 
-- Requires system OpenSSH with `ControlMaster`, `ProxyJump`, and `SSH_ASKPASS_REQUIRE`.
+- Requires Node.js 22+ and system OpenSSH. Linux/macOS additionally require `ControlMaster` and `SSH_ASKPASS_REQUIRE`; see Windows compatibility above.
 - File metadata/range commands are designed for Linux targets with GNU `stat`, `find`, `head`, and `dd`; transfer and rename use SFTP.
 - `ssh_exec` does not allocate a PTY and closes stdin: interactive editors and `sudo` password prompts do not work.
 - Output: 1 MiB default, 5 MiB max.

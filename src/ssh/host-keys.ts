@@ -57,13 +57,12 @@ export class HostKeyStore {
     if (exact) {
       return { status: 'trusted', fingerprint, key_type: keyType, sources: [exact.source] };
     }
-    const sameType = usableEntries.filter((entry) => entry.keyType === keyType);
-    if (sameType.length > 0) {
+    if (hostEntries.length > 0) {
       return {
         status: 'changed',
         fingerprint,
         key_type: keyType,
-        sources: [...new Set(sameType.map((entry) => entry.source))],
+        sources: [...new Set(hostEntries.map((entry) => entry.source))],
       };
     }
     return { status: 'unknown', fingerprint, key_type: keyType, sources: [] };

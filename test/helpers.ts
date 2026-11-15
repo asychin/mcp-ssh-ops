@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { AppPaths } from '../src/config.js';
 
 export function testPaths(directory: string): AppPaths {
@@ -10,7 +11,7 @@ export function testPaths(directory: string): AppPaths {
     knownHostsFile: join(sshDir, 'known_hosts'),
     keysDir: join(sshDir, 'keys'),
     runtimeDir: join(directory, 'runtime'),
-    localRoots: [directory, '/tmp'],
+    localRoots: [directory, tmpdir()],
     maxTransferBytes: 104_857_600,
     legacyConfigDir,
     legacyProfilesFile: join(legacyConfigDir, 'profiles.json'),

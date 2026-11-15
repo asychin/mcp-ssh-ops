@@ -20,7 +20,7 @@ export function getAppPaths(env: NodeJS.ProcessEnv = process.env): AppPaths {
   const legacyConfigDir = resolve(env.MCP_SSH_OPS_CONFIG_DIR ?? join(home, '.config', 'mcp-ops'));
   const runtimeBase = env.XDG_RUNTIME_DIR
     ? resolve(env.XDG_RUNTIME_DIR)
-    : join('/tmp', `mcp-ssh-ops-${userInfo().uid}`);
+    : join(tmpdir(), `mcp-ssh-ops-${userInfo().uid}`);
   const localRoots = env.MCP_SSH_OPS_LOCAL_ROOTS
     ? env.MCP_SSH_OPS_LOCAL_ROOTS.split(delimiter).filter(Boolean).map((path) => resolve(path))
     : [resolve(process.cwd()), resolve(tmpdir())];

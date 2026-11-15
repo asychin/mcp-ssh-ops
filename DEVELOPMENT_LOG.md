@@ -2,6 +2,15 @@
 
 This file should be read at the start of the next development session and updated after significant changes.
 
+## 2026-11-15 — cross-platform desktop authentication and Windows transport
+
+- Preserved Linux/macOS native OpenSSH; Windows selects an in-process ssh2 transport with separate exec/SFTP channels on one authenticated connection and independent clones.
+- Added inherited/system askpass discovery and desktop-aware Linux fallbacks, Windows Credential UI, and a macOS hidden-answer dialog. Cancellation/failure never falls through to a second dialog. Helper diagnostics are not returned as errors because they may contain secrets.
+- Windows resolves native configuration with ssh -G; supported settings are mapped explicitly and changed unsupported settings fail closed. ProxyJump, per-hop host trust, scoped RAM passwords, isolated sessions, shared file/hash/backup protections, and agent keys are retained. Private-key files, IdentitiesOnly, and certificates require the native backend/WSL instead of silent degradation.
+- Added transport/config/cache/provider integration coverage and Linux/Windows CI. Native desktop interaction still requires platform-specific manual verification.
+- Updated MCP SDK to 2.3.0 and Zod to 4.6.6 to address audit advisories in the previous pinned versions.
+- Validation results will be recorded after the checks finish.
+
 ## 2026-10-09 - review and patch release 0.3.2
 
 ### Changes

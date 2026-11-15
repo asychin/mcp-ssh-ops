@@ -15,6 +15,8 @@ import type { ExecRequest, ExecResult, SessionMetadata, SshProfile } from '../ty
 import { AskpassBroker } from './askpass-broker.js';
 import { OpenSshFileOperations } from './openssh-file-operations.js';
 import { buildRemoteCommand } from './shell.js';
+import { Ssh2ConnectionFactory } from './ssh2-connection.js';
+import type { Ssh2Transport } from './ssh2-transport.js';
 
 interface SessionRecord {
   id: string;
@@ -28,6 +30,7 @@ interface SessionRecord {
   lastError?: string;
   activeOperations: number;
   masterPid?: number;
+  transport?: Ssh2Transport;
 }
 
 export class SessionManager {
@@ -39,16 +42,19 @@ export class SessionManager {
   private readyPromise?: Promise<void>;
   private askpassClientPath?: string;
   private heartbeat?: NodeJS.Timeout;
+  private readonly ssh2: Ssh2ConnectionFactory;
 
   constructor(
     private readonly paths: AppPaths,
     private readonly profiles: ProfileStore,
     secretPrompt: typeof promptSecret = promptSecret,
+    private readonly backend: 'openssh' | 'ssh2' = process.platform === 'win32' ? 'ssh2' : 'openssh',
   ) {
     this.processRuntimeDir = join(paths.runtimeDir, `agent-${process.pid}-${randomUUID().slice(0, 8)}`);
     this.localPathPolicy = new LocalPathPolicy(paths.localRoots);
     this.brokerAllPrompts = true;
     this.broker = new AskpassBroker(join(this.processRuntimeDir, 'askpass.sock'), secretPrompt);
+    this.ssh2 = new Ssh2ConnectionFactory(paths, profiles, secretPrompt);
   }
 
   async createSession(profile: SshProfile, name?: string, inheritedCredentialGroup?: string, signal?: AbortSignal) {
@@ -60,6 +66,19 @@ export class SessionManager {
     const target = profile.ssh_alias ?? profile.host;
     const controlPath = join(this.processRuntimeDir, `cm-${token.slice(0, 12)}`);
     const credentialGroup = inheritedCredentialGroup ?? `user:${profile.username}`;
+    if (this.backend === 'ssh2') {
+      const transport = await this.ssh2.connect(profile, connectionOptions(profile), signal);
+      const record: SessionRecord = {
+        id, name: sessionName, profile: { ...profile }, target, controlPath: '', credentialGroup,
+        transport, status: 'connected', connectedAt: new Date().toISOString(), activeOperations: 0,
+      };
+      transport.client.once('close', () => {
+        record.status = 'disconnected';
+        record.lastError = 'SSH transport closed.';
+      });
+      this.sessions.set(id, record);
+      return this.describe(record);
+    }
     const sharedCredential = this.broker.hasCredentialReferences(credentialGroup);
     const releaseCredentialOnFailure = !inheritedCredentialGroup && !sharedCredential;
     const contextId = this.broker.createContext(credentialGroup, profile.host, profile.port);
@@ -137,12 +156,18 @@ export class SessionManager {
   }
 
   trustHost(host: string, port: number, fingerprint: string) {
+    if (this.backend === 'ssh2') return this.ssh2.trustHost(host, port, fingerprint);
     return this.broker.trustPending(host, port, fingerprint);
   }
 
   async closeSession(sessionId: string) {
     const session = this.requireSession(sessionId);
     session.status = 'closing';
+    if (session.transport) {
+      session.transport.close();
+      this.sessions.delete(sessionId);
+      return { session: this.sessionMetadata(session), session_id: sessionId, closed: true, graceful: true };
+    }
     const result = await runProcess('ssh', [
       '-F', this.paths.sshConfigFile,
       '-S', session.controlPath,
@@ -256,7 +281,7 @@ export class SessionManager {
   ): Promise<T & { session: SessionMetadata }> {
     const session = this.requireConnected(sessionId);
     return this.withOperation(session, async () => {
-      const result = await operation(new OpenSshFileOperations({
+      const result = await operation(new OpenSshFileOperations(session.transport ?? {
         execRaw: (command, timeoutMs, maxOutputBytes) => this.execRaw(session, command, timeoutMs, maxOutputBytes),
         sftp: (batch, timeoutMs, maxOutputBytes) => this.runSftp(session, batch, timeoutMs, maxOutputBytes),
       }, this.localPathPolicy, this.paths.maxTransferBytes));
@@ -265,6 +290,7 @@ export class SessionManager {
   }
 
   private async execRaw(session: SessionRecord, command: string, timeoutMs: number, maxOutputBytes: number): Promise<ProcessResult> {
+    if (session.transport) return session.transport.execRaw(command, timeoutMs, maxOutputBytes);
     await this.assertMaster(session);
     const result = await runProcess('ssh', [
       '-F', this.paths.sshConfigFile,
@@ -371,6 +397,8 @@ export class SessionManager {
     return {
       ...process.env,
       SSH_ASKPASS: this.askpassClientPath!,
+      MCP_SSH_OPS_ASKPASS_CLIENT: this.askpassClientPath!,
+      MCP_SSH_OPS_NATIVE_ASKPASS: process.env.SSH_ASKPASS,
       SSH_ASKPASS_REQUIRE: 'force',
       MCP_SSH_OPS_ASKPASS_SOCKET: this.broker.socketPath,
       MCP_SSH_OPS_ASKPASS_CONTEXT: contextId,
@@ -381,6 +409,7 @@ export class SessionManager {
   private async ensureReady(): Promise<void> {
     this.readyPromise ??= (async () => {
       await this.profiles.ensure();
+      if (this.backend === 'ssh2') return;
       await mkdir(this.processRuntimeDir, { recursive: true, mode: 0o700 });
       await chmod(this.processRuntimeDir, 0o700);
       this.askpassClientPath = await resolveAskpassClientPath();
@@ -451,6 +480,7 @@ export class SessionManager {
       connected_at: session.connectedAt,
       active_operations: session.activeOperations,
       master_pid: session.masterPid ?? null,
+      backend: session.transport ? 'ssh2' : 'openssh',
       last_error: session.lastError ?? null,
     };
   }
