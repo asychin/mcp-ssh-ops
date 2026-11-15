@@ -7,7 +7,7 @@ import { SecretCache } from '../src/ssh/secret-cache.js';
 test('fails closed on unsupported config instead of silently downgrading OpenSSH', () => {
   const defaults = new Map([['proxycommand', ['none']], ['pubkeyacceptedalgorithms', ['rsa-sha2-512']]]);
   assert.doesNotThrow(() => validateSsh2Options(defaults, defaults));
-  for (const [key, value] of [['proxycommand', 'nc bastion 22'], ['certificatefile', '~/.ssh/id-cert.pub'], ['identitiesonly', 'yes'], ['forwardagent', 'yes'], ['pubkeyacceptedalgorithms', 'ssh-rsa']] as const) {
+  for (const [key, value] of [['proxycommand', 'nc bastion 22'], ['certificatefile', '~/.ssh/id-cert.pub'], ['identityfile', '~/.ssh/custom'], ['identitiesonly', 'yes'], ['forwardagent', 'yes'], ['pubkeyacceptedalgorithms', 'ssh-rsa']] as const) {
     assert.throws(() => validateSsh2Options(new Map([...defaults, [key, [value]]]), defaults), /SSH_CONFIG_UNSUPPORTED/);
   }
   assert.throws(() => ssh2Algorithms(new Map([['hostkeyalgorithms', ['ssh-ed25519-cert-v01@openssh.com']]])), /SSH_CONFIG_UNSUPPORTED/);

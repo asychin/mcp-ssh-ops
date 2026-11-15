@@ -9,7 +9,9 @@ This file should be read at the start of the next development session and update
 - Windows resolves native configuration with ssh -G; supported settings are mapped explicitly and changed unsupported settings fail closed. ProxyJump, per-hop host trust, scoped RAM passwords, isolated sessions, shared file/hash/backup protections, and agent keys are retained. Private-key files, IdentitiesOnly, and certificates require the native backend/WSL instead of silent degradation.
 - Added transport/config/cache/provider integration coverage and Linux/Windows CI. Native desktop interaction still requires platform-specific manual verification.
 - Updated MCP SDK to 2.3.0 and Zod to 4.6.6 to address audit advisories in the previous pinned versions.
-- Validation results will be recorded after the checks finish.
+- Local validation (including a headless run with DISPLAY/WAYLAND_DISPLAY removed): typecheck/build passed; 32 tests passed, one Windows-only helper compilation test skipped; production audit reports zero vulnerabilities. Added keyboard-interactive password/OTP cache separation, BatchMode, and two-jump trust coverage. Fixed partial-transfer cleanup and unsupported SFTP rename-extension fallback.
+- Replaced flaky ssh2-generated Ed25519 test keys with Node crypto EC/SEC1 fixtures: ssh2 1.17.0 strips leading zero public-key bytes in its generator, occasionally creating malformed fixtures. Production key generation/reading was not added.
+- Windows CI/native Credential UI and macOS desktop interaction remain unverified here. PR creation is blocked by the requesting user's expired GitHub connection; the feature branch is pushed, but PR-dependent CI has not run.
 
 ## 2026-10-09 - review and patch release 0.3.2
 

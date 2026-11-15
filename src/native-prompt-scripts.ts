@@ -66,6 +66,7 @@ public static class McpSshCredentialPrompt {
 }
 '@
 [McpSshCredentialPrompt]::Prompt($env:MCP_SSH_OPS_PROMPT_TITLE, $env:MCP_SSH_OPS_PROMPT_MESSAGE)
+if ([Environment]::ExitCode -eq 1) { exit 1 }
 } catch {
   [Console]::Error.WriteLine('The native Windows credential dialog failed.')
   exit 2

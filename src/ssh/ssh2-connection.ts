@@ -42,7 +42,7 @@ export class Ssh2ConnectionFactory {
   ): Promise<Ssh2Transport> {
     if (signal?.aborted) throw cancelled();
     const alias = profile.ssh_alias ?? profile.host;
-    if (ancestors.has(alias) || ancestors.size >= 16) throw new McpOpsError('PROXY_JUMP_CYCLE', 'ProxyJump is cyclic or exceeds 16 hops.');
+    if (ancestors.has(alias) || ancestors.size >= 16 || opened.length >= 16) throw new McpOpsError('PROXY_JUMP_CYCLE', 'ProxyJump is cyclic or exceeds 16 hops.');
     const chain = new Set([...ancestors, alias]);
     const values = await this.profiles.resolveOptions(alias, [...overrides, ...(upstream ? ['-o', 'ProxyJump=none'] : [])]);
     const defaults = await this.profiles.resolveOptions(alias, [], true);
@@ -100,6 +100,7 @@ export class Ssh2ConnectionFactory {
         : expandPath(agentOption.replace(/^\$SSH_AUTH_SOCK$/, process.env.SSH_AUTH_SOCK ?? ''), host, port, username);
     const methods = (option(values, 'preferredauthentications') ?? 'publickey,keyboard-interactive,password').split(',');
     const attempts = new Set<string>();
+    const interactive = option(values, 'batchmode') !== 'yes' && option(values, 'numberofpasswordprompts') !== '0';
     const config: ConnectConfig = {
       host, port, username, sock: socket, algorithms, tryKeyboard: true, readyTimeout: profile.connect_timeout_ms + ASKPASS_TIMEOUT_MS,
       keepaliveInterval: Number(option(values, 'serveraliveinterval') ?? 30) * 1_000,
@@ -123,8 +124,8 @@ export class Ssh2ConnectionFactory {
         if (!remaining) return callback({ type: 'none', username });
         const method = methods.find((candidate) => remaining.some((allowed) => allowed === candidate) && !attempts.has(candidate)
           && (candidate !== 'publickey' || Boolean(agent) && option(values, 'pubkeyauthentication') !== 'no')
-          && (candidate !== 'password' || option(values, 'passwordauthentication') !== 'no')
-          && (candidate !== 'keyboard-interactive' || option(values, 'kbdinteractiveauthentication') !== 'no')
+          && (candidate !== 'password' || interactive && option(values, 'passwordauthentication') !== 'no')
+          && (candidate !== 'keyboard-interactive' || interactive && option(values, 'kbdinteractiveauthentication') !== 'no')
           && ['publickey', 'password', 'keyboard-interactive'].includes(candidate));
         if (!method || signal?.aborted) return stopAuthentication(callback);
         attempts.add(method);

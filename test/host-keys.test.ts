@@ -7,11 +7,12 @@ import { test } from 'node:test';
 import ssh2 from 'ssh2';
 import { HostKeyStore, canonicalHost } from '../src/ssh/host-keys.js';
 import { sshFingerprint } from '../src/ssh/fingerprint.js';
+import { testKeyPair } from './helpers.js';
 
 const { utils } = ssh2;
 
 function publicKey() {
-  const pair = utils.generateKeyPairSync('ed25519');
+  const pair = testKeyPair();
   const parsed = utils.parseKey(pair.private);
   assert.ok(!(parsed instanceof Error));
   return { type: parsed.type, key: parsed.getPublicSSH() };

@@ -5,16 +5,17 @@ import { McpOpsError } from '../errors.js';
 
 export type SshOptions = Map<string, string[]>;
 
-const supportedOptions = new Set(`host hostname user port proxyjump identityagent identityfile identitiesonly
+const supportedOptions = new Set(`host hostname user port proxyjump identityagent identitiesonly
 preferredauthentications passwordauthentication kbdinteractiveauthentication pubkeyauthentication
-connecttimeout serveraliveinterval serveralivecountmax tcpkeepalive hostkeyalias
-userknownhostsfile globalknownhostsfile stricthostkeychecking hashknownhosts updatehostkeys
+connecttimeout serveraliveinterval serveralivecountmax hostkeyalias
+userknownhostsfile globalknownhostsfile stricthostkeychecking
 hostkeyalgorithms ciphers macs kexalgorithms compression batchmode numberofpasswordprompts
-controlmaster controlpath controlpersist requesttty loglevel logverbose canonicalizehostname
+controlmaster controlpath controlpersist loglevel logverbose canonicalizehostname
 canonicaldomains canonicalizefallbacklocal canonicalizemaxdots canonicalizepermittedcnames`.split(/\s+/));
 
 export function validateSsh2Options(values: SshOptions, defaults: SshOptions): void {
   for (const [key, value] of values) {
+    if ((key === 'updatehostkeys' || key === 'hashknownhosts') && ['no', 'false'].includes(value[0] ?? '')) continue;
     if (!supportedOptions.has(key) && JSON.stringify(value) !== JSON.stringify(defaults.get(key))) {
       throw new McpOpsError('SSH_CONFIG_UNSUPPORTED', `The Windows ssh2 backend cannot preserve OpenSSH ${key}. Use OpenSSH under WSL or remove this setting for this Host.`);
     }

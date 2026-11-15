@@ -78,14 +78,15 @@ export class Ssh2Transport implements FileChannel {
   }
 
   async getFile(remotePath: string, localPath: string, _preserveMode: boolean, timeoutMs: number): Promise<void> {
-    await this.withSftp(timeoutMs, (sftp) => pipeline(
+    await this.withSftp(timeoutMs, (sftp, signal) => pipeline(
       sftp.createReadStream(remotePath), this.transferLimit(), createWriteStream(localPath, { flags: 'wx', mode: 0o600 }),
+      { signal },
     ));
   }
 
   async putFile(localPath: string, remotePath: string, mode: string, timeoutMs: number): Promise<void> {
-    await this.withSftp(timeoutMs, async (sftp) => {
-      await pipeline(createReadStream(localPath), this.transferLimit(), sftp.createWriteStream(remotePath, { flags: 'wx', mode: parseInt(mode, 8) }));
+    await this.withSftp(timeoutMs, async (sftp, signal) => {
+      await pipeline(createReadStream(localPath), this.transferLimit(), sftp.createWriteStream(remotePath, { flags: 'wx', mode: parseInt(mode, 8) }), { signal });
       await new Promise<void>((resolve, reject) => sftp.chmod(remotePath, parseInt(mode, 8), (error) => error ? reject(error) : resolve()));
     });
   }
@@ -94,7 +95,7 @@ export class Ssh2Transport implements FileChannel {
     await this.withSftp(timeoutMs, async (sftp) => {
       try { await sftpRename(sftp, source, destination, true); }
       catch (error) {
-        if ((error as { code?: number }).code !== 8) throw error;
+        if ((error as { code?: number }).code !== 8 && (error as Error).message !== 'Server does not support this extended request') throw error;
         await sftpRename(sftp, source, destination);
       }
     });
@@ -117,27 +118,29 @@ export class Ssh2Transport implements FileChannel {
     } });
   }
 
-  private withSftp<T>(timeoutMs: number, operation: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
+  private withSftp<T>(timeoutMs: number, operation: (sftp: SFTPWrapper, signal: AbortSignal) => Promise<T>): Promise<T> {
     this.assertConnected();
     return new Promise((resolve, reject) => {
       let settled = false;
+      const controller = new AbortController();
       let channel: SFTPWrapper | undefined;
       const finish = (error?: unknown, value?: T) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        channel?.end();
+        if (error) { controller.abort(); channel?.destroy(); }
+        else channel?.end();
         if (error) reject(error);
         else resolve(value as T);
       };
       const timer = setTimeout(() => finish(new McpOpsError('SFTP_TIMEOUT', 'The SFTP operation timed out.')), timeoutMs);
       this.client.sftp((error, sftp) => {
         if (error) return finish(error);
-        if (settled) { sftp.end(); return; }
+        if (settled) { sftp.destroy(); return; }
         channel = sftp;
         sftp.once('error', finish);
         sftp.once('close', () => finish(new McpOpsError('SFTP_DISCONNECTED', 'The SFTP channel closed before completion.')));
-        operation(sftp).then((value) => finish(undefined, value), finish);
+        operation(sftp, controller.signal).then((value) => finish(undefined, value), finish);
       });
     });
   }

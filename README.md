@@ -142,7 +142,7 @@ Windows still needs `ssh.exe` for `ssh -G` (including `Include` and `Match` reso
 
 Supported: passwords, keyboard-interactive prompts, agent authentication (including the Windows OpenSSH agent named pipe), literal Host aliases, explicit User/Port overrides, ProxyJump chains, configured user/global known_hosts, hashed/revoked host keys, and supported algorithm restrictions. OTP/other interactive challenges are not cached as passwords.
 
-Private key files are never read by MCP. Load keys with `ssh-add` first. `IdentitiesOnly`, explicit certificates, ProxyCommand, agent forwarding, and other non-default OpenSSH settings that cannot be preserved are rejected with `SSH_CONFIG_UNSUPPORTED`, not silently ignored. Certificate-only host-key policies are rejected; the backend does not implement OpenSSH host-certificate validation. Use the existing OpenSSH backend inside WSL when full OpenSSH feature parity is required.
+Private key files are never read by MCP. Load keys with `ssh-add` first. Custom `IdentityFile` settings, `IdentitiesOnly`, explicit certificates, ProxyCommand, agent forwarding, and other non-default OpenSSH settings that cannot be preserved are rejected with `SSH_CONFIG_UNSUPPORTED`, not silently ignored. Certificate-only host-key policies are rejected; the backend does not implement OpenSSH host-certificate validation. Host trust always requires explicit approval; automatic host-key rotation is not performed. Use the existing OpenSSH backend inside WSL when full OpenSSH feature parity is required.
 
 ## Host Key Verification
 
