@@ -34,7 +34,13 @@ export function disabled(values: SshOptions, name: string): boolean {
 }
 
 export function configPaths(values: SshOptions, name: string, host: string, port: number, username: string): string[] {
-  return (values.get(name) ?? []).flatMap(splitConfigPaths)
+  return (values.get(name) ?? []).flatMap((value) => {
+    const paths = splitConfigPaths(value);
+    if (paths.length > 1 && !value.includes('"') && paths.some((path) => !/^(?:[\\/]|[A-Za-z]:[\\/]|~[\\/]|%[dhrp%]|\$\{|none$|NUL$)/.test(path))) {
+      throw new McpOpsError('SSH_CONFIG_UNSUPPORTED', `ssh -G cannot represent ${name} paths containing literal spaces unambiguously. Use %d or an environment-variable token in the SSH config, or use OpenSSH under WSL.`);
+    }
+    return paths;
+  })
     .filter((path) => path !== 'none' && path !== '/dev/null' && path.toUpperCase() !== 'NUL')
     .map((path) => expandPath(path, host, port, username));
 }

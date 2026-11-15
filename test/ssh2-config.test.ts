@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { splitConfigPaths, ssh2Algorithms, validateSsh2Options } from '../src/ssh/ssh2-config.js';
+import { configPaths, splitConfigPaths, ssh2Algorithms, validateSsh2Options } from '../src/ssh/ssh2-config.js';
 import { parseJump } from '../src/ssh/ssh2-connection.js';
 import { SecretCache } from '../src/ssh/secret-cache.js';
 
@@ -19,6 +19,21 @@ test('parses Windows paths and jump routes without a shell', () => {
   assert.deepEqual(parseJump('admin@[::1]:2222'), { username: 'admin', host: '::1', port: 2222 });
   assert.deepEqual(parseJump('bastion'), { username: undefined, host: 'bastion', port: undefined });
   assert.throws(() => parseJump('user@host:99999'), /PROXY_JUMP_INVALID/);
+});
+
+test('rejects lossy ssh -G filenames rather than reading or writing the wrong trust store', () => {
+  const name = 'userknownhostsfile';
+  assert.throws(() => configPaths(new Map([[name, ['C:/Users/Alice Smith/.ssh/known_hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED.*literal spaces/);
+  assert.throws(() => configPaths(new Map([[name, ['/home/alice/known hosts']]]), name, 'host', 22, 'alice'), /SSH_CONFIG_UNSUPPORTED/);
+  const previous = process.env.MCP_TEST_KNOWN_HOSTS;
+  try {
+    process.env.MCP_TEST_KNOWN_HOSTS = 'safe directory/known hosts';
+    const result = configPaths(new Map([[name, ['${MCP_TEST_KNOWN_HOSTS}']]]), name, 'host', 22, 'alice');
+    assert.ok(result[0]!.endsWith('known hosts'));
+    assert.equal(result.length, 1);
+  } finally {
+    if (previous === undefined) delete process.env.MCP_TEST_KNOWN_HOSTS; else process.env.MCP_TEST_KNOWN_HOSTS = previous;
+  }
 });
 
 test('coalesces RAM password prompts and clears them when the last reference closes', async () => {
