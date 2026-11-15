@@ -7,7 +7,7 @@ import type { ProfileStore } from '../profile-store.js';
 import type { SshProfile } from '../types.js';
 import { HostKeyStore } from './host-keys.js';
 import { SecretCache } from './secret-cache.js';
-import { configPaths, expandPath, option, ssh2Algorithms, validateSsh2Options } from './ssh2-config.js';
+import { configPaths, disabled, expandPath, option, ssh2Algorithms, validateSsh2Options } from './ssh2-config.js';
 import { Ssh2Transport } from './ssh2-transport.js';
 
 export class Ssh2ConnectionFactory {
@@ -123,9 +123,9 @@ export class Ssh2ConnectionFactory {
       authHandler: (remaining, _partial, callback) => {
         if (!remaining) return callback({ type: 'none', username });
         const method = methods.find((candidate) => remaining.some((allowed) => allowed === candidate) && !attempts.has(candidate)
-          && (candidate !== 'publickey' || Boolean(agent) && option(values, 'pubkeyauthentication') !== 'no')
-          && (candidate !== 'password' || interactive && option(values, 'passwordauthentication') !== 'no')
-          && (candidate !== 'keyboard-interactive' || interactive && option(values, 'kbdinteractiveauthentication') !== 'no')
+          && (candidate !== 'publickey' || Boolean(agent) && !disabled(values, 'pubkeyauthentication'))
+          && (candidate !== 'password' || interactive && !disabled(values, 'passwordauthentication'))
+          && (candidate !== 'keyboard-interactive' || interactive && !disabled(values, 'kbdinteractiveauthentication'))
           && ['publickey', 'password', 'keyboard-interactive'].includes(candidate));
         if (!method || signal?.aborted) return stopAuthentication(callback);
         attempts.add(method);

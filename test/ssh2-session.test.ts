@@ -36,7 +36,7 @@ async function fixture(authentication: 'password' | 'keyboard-interactive' = 'pa
           if (answers[0] === state.password && answers[1] === '123456') context.accept();
           else context.reject(['keyboard-interactive']);
         });
-      } else context.reject([authentication]);
+      } else context.reject(authentication === 'password' ? ['publickey', 'password'] : [authentication]);
     });
     connection.on('ready', () => {
       state.connections += 1;
@@ -206,6 +206,23 @@ test('ssh2 cancellation and unsupported config do not leave live sessions', asyn
     await assert.rejects(manager.createSession(profile), /SSH_CONFIG_UNSUPPORTED.*forwardagent/);
     assert.deepEqual(manager.listSessions(), []);
     assert.equal(f.state.connections, 0);
+  } finally { await manager.closeAll(); await f.close(); }
+});
+
+test('ssh2 honors the false emitted by ssh -G for PubkeyAuthentication no', async () => {
+  const f = await fixture();
+  let prompts = 0;
+  const manager = new SessionManager(f.paths, f.profiles, async () => { prompts += 1; return f.state.password; }, 'ssh2');
+  try {
+    const config = (await readFile(f.paths.sshConfigFile, 'utf8')).replace(/PreferredAuthentications password/gi, 'PreferredAuthentications publickey,password');
+    await writeFile(f.paths.sshConfigFile, `Host target\n PubkeyAuthentication no\n IdentityAgent "${join(f.directory, 'missing-agent').replaceAll('\\', '/')}"\n${config}`);
+    const profile = await f.profiles.get('target');
+    assert.equal((await f.profiles.resolveOptions('target')).get('pubkeyauthentication')?.[0], 'false');
+    await assert.rejects(manager.createSession(profile), /HOST_KEY_UNKNOWN/);
+    await manager.trustHost('127.0.0.1', f.port, f.fingerprint);
+    const session = await manager.createSession(profile);
+    assert.equal(session.status, 'connected');
+    assert.equal(prompts, 1);
   } finally { await manager.closeAll(); await f.close(); }
 });
 

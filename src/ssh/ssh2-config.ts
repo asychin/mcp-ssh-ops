@@ -29,6 +29,10 @@ export function option(values: SshOptions, name: string): string | undefined {
   return values.get(name)?.[0];
 }
 
+export function disabled(values: SshOptions, name: string): boolean {
+  return ['no', 'false', '0'].includes(option(values, name) ?? '');
+}
+
 export function configPaths(values: SshOptions, name: string, host: string, port: number, username: string): string[] {
   return (values.get(name) ?? []).flatMap(splitConfigPaths)
     .filter((path) => path !== 'none' && path !== '/dev/null' && path.toUpperCase() !== 'NUL')
