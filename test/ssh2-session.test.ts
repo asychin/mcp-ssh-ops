@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createPatch } from 'diff';
 import ssh2 from 'ssh2';
-import type { Server as SshServer, SFTPWrapper } from 'ssh2';
+import type { ConnectConfig, Server as SshServer, SFTPWrapper } from 'ssh2';
 import { ProfileStore } from '../src/profile-store.js';
 import { SessionManager } from '../src/ssh/session-manager.js';
 import { sshFingerprint } from '../src/ssh/fingerprint.js';
@@ -139,7 +139,12 @@ test('ssh2 preserves one transport for concurrent exec/SFTP, clones and scoped R
   }
 });
 
-test('ssh2 applies ProxyJump config and verifies each hop independently', async () => {
+test('ssh2 applies ProxyJump config and verifies each hop independently', async (t) => {
+  const protocolLog: string[] = [];
+  const connect = ssh2.Client.prototype.connect;
+  t.mock.method(ssh2.Client.prototype, 'connect', function (this: ssh2.Client, config: ConnectConfig) {
+    return connect.call(this, { ...config, debug: (message) => protocolLog.push(`${config.username}: ${message}`) });
+  });
   const target = await fixture();
   const jump = await fixture();
   const secondJump = await fixture();
@@ -161,6 +166,8 @@ test('ssh2 applies ProxyJump config and verifies each hop independently', async 
     assert.equal(result.session.username, 'target-user');
     assert.equal(result.session.proxy_jump, 'bastion,second');
     assert.equal(target.state.connections, 1);
+  } catch (error) {
+    throw new Error(`${String(error)}\n${protocolLog.slice(-250).join('\n')}`, { cause: error });
   } finally {
     await manager.closeAll();
     await target.close();
