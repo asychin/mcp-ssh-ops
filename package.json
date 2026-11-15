@@ -15,7 +15,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "npm run build && tsx --test test/*.test.ts",
+    "test": "npm run build && tsx --test test/*.test.ts && npm run test:ssh2:fallback",
+    "test:ssh2:fallback": "node --require ./test/ssh2-fallback.cjs --import tsx --test test/ssh2-session.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "keywords": [

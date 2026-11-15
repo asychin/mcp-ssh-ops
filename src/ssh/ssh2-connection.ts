@@ -1,3 +1,4 @@
+import { Duplex } from 'node:stream';
 import type { AnyAuthMethod, AuthenticationType, ClientChannel, ConnectConfig, NextAuthHandler } from 'ssh2';
 import type { AppPaths } from '../config.js';
 import { ASKPASS_TIMEOUT_MS } from '../config.js';
@@ -102,7 +103,7 @@ export class Ssh2ConnectionFactory {
     const attempts = new Set<string>();
     const interactive = option(values, 'batchmode') !== 'yes' && option(values, 'numberofpasswordprompts') !== '0';
     const config: ConnectConfig = {
-      host, port, username, sock: socket, algorithms, tryKeyboard: true, readyTimeout: profile.connect_timeout_ms + ASKPASS_TIMEOUT_MS,
+      host, port, username, sock: socket ? deferredChannel(socket) : undefined, algorithms, tryKeyboard: true, readyTimeout: profile.connect_timeout_ms + ASKPASS_TIMEOUT_MS,
       keepaliveInterval: Number(option(values, 'serveraliveinterval') ?? 30) * 1_000,
       keepaliveCountMax: Number(option(values, 'serveralivecountmax') ?? 3),
       hostVerifier: (key: Buffer) => {
@@ -170,6 +171,27 @@ export class Ssh2ConnectionFactory {
       catch (error) { finish(error); }
     });
   }
+}
+
+function deferredChannel(channel: ClientChannel): Duplex {
+  const socket = new Duplex({
+    read() { channel.resume(); },
+    write(chunk: Buffer, encoding, callback) {
+      // ssh2's fallback ChaCha cipher shares nonce scratch space across clients.
+      // Defer parent writes until the child has finished encrypting its packet.
+      queueMicrotask(() => {
+        if (channel.destroyed) callback(new Error('ProxyJump channel is closed.'));
+        else channel.write(chunk, encoding, callback);
+      });
+    },
+    final(callback) { channel.end(callback); },
+    destroy(error, callback) { channel.destroy(); callback(error); },
+  });
+  channel.on('data', (chunk: Buffer) => { if (!socket.push(chunk)) channel.pause(); });
+  channel.once('end', () => socket.push(null));
+  channel.once('error', (error: Error) => socket.destroy(error));
+  channel.once('close', () => socket.destroy());
+  return socket;
 }
 
 function pendingId(host: string, port: number, fingerprint: string): string {

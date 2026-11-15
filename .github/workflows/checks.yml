@@ -26,4 +26,6 @@ jobs:
         run: npm test
       - if: runner.os == 'Windows'
         run: npx tsx --test test/password-prompt.test.ts test/ssh2-config.test.ts test/ssh2-session.test.ts
+      - if: runner.os == 'Windows'
+        run: npm run test:ssh2:fallback
       - run: npm audit --omit=dev
