@@ -16,6 +16,14 @@ export interface OpenSshChannel {
   sftp(batch: string, timeoutMs: number, maxOutputBytes: number): Promise<ProcessResult>;
 }
 
+export interface FileChannel {
+  execRaw(command: string, timeoutMs: number, maxOutputBytes: number): Promise<ProcessResult>;
+  getFile(remotePath: string, localPath: string, preserveMode: boolean, timeoutMs: number): Promise<void>;
+  putFile(localPath: string, remotePath: string, mode: string, timeoutMs: number): Promise<void>;
+  renameFile(source: string, destination: string, timeoutMs: number): Promise<void>;
+  removeFile(path: string): Promise<void>;
+}
+
 export interface RemoteStats {
   path: string;
   type: string;
@@ -28,11 +36,15 @@ export interface RemoteStats {
 }
 
 export class OpenSshFileOperations {
+  private readonly channel: FileChannel;
+
   constructor(
-    private readonly channel: OpenSshChannel,
+    channel: OpenSshChannel | FileChannel,
     private readonly localPaths = new LocalPathPolicy([process.cwd(), tmpdir()]),
     private readonly maxTransferBytes = DEFAULT_TRANSFER_LIMIT_BYTES,
-  ) {}
+  ) {
+    this.channel = 'sftp' in channel ? nativeFileChannel(channel) : channel;
+  }
 
   async stat(path: string, followSymlinks = false): Promise<RemoteStats> {
     validateRemotePath(path);
@@ -153,8 +165,8 @@ export class OpenSshFileOperations {
     const mode = preserveMode ? `0${(source.stats.mode & 0o7777).toString(8)}` : '0644';
     let temporaryCreated = false;
     try {
-      await this.put(source.path, temporaryPath, mode, transferTimeout(source.stats.size));
       temporaryCreated = true;
+      await this.put(source.path, temporaryPath, mode, transferTimeout(source.stats.size));
       const uploadedSha256 = await this.remoteHash(temporaryPath);
       if (uploadedSha256 !== localSha256) {
         throw new McpOpsError('UPLOAD_HASH_MISMATCH', `Uploaded temporary file hash ${uploadedSha256} differs from local hash ${localSha256}.`);
@@ -165,7 +177,7 @@ export class OpenSshFileOperations {
       if (!destinationExists && await this.remoteExists(remotePath)) {
         throw new McpOpsError('REMOTE_FILE_APPEARED', `${remotePath} was created by another process during upload. The replacement was not applied.`);
       }
-      await this.runSftp(`rename ${quoteSftpPath(temporaryPath)} ${quoteSftpPath(remotePath)}\n`, transferTimeout(source.stats.size));
+      await this.channel.renameFile(temporaryPath, remotePath, transferTimeout(source.stats.size));
       temporaryCreated = false;
       const finalSha256 = await this.remoteHash(remotePath);
       if (finalSha256 !== localSha256) throw new McpOpsError('UPLOAD_VERIFICATION_FAILED', `Final remote hash ${finalSha256} differs from local hash ${localSha256}.`);
@@ -179,7 +191,7 @@ export class OpenSshFileOperations {
         mode,
       };
     } finally {
-      if (temporaryCreated) await this.runSftp(`-rm ${quoteSftpPath(temporaryPath)}\n`).catch(() => undefined);
+      if (temporaryCreated) await this.channel.removeFile(temporaryPath).catch(() => undefined);
     }
   }
 
@@ -210,8 +222,8 @@ export class OpenSshFileOperations {
     const backupPath = destination.stats ? `${destination.path}.mcp-ssh-ops-backup-${suffix}` : null;
     let temporaryCreated = false;
     try {
-      await this.get(remotePath, temporaryPath, preserveMode, transferTimeout(remote.size));
       temporaryCreated = true;
+      await this.get(remotePath, temporaryPath, preserveMode, transferTimeout(remote.size));
       const downloadedSha256 = await hashLocalFile(temporaryPath);
       if (downloadedSha256 !== remoteSha256) {
         throw new McpOpsError('DOWNLOAD_HASH_MISMATCH', `Downloaded hash ${downloadedSha256} differs from remote hash ${remoteSha256}.`);
@@ -271,12 +283,12 @@ export class OpenSshFileOperations {
       if (updated.length > MAX_EDIT_FILE_BYTES) throw new McpOpsError('EDIT_RESULT_TOO_LARGE', `The patched file would exceed ${MAX_EDIT_FILE_BYTES} bytes.`);
       await writeFile(updatedPath, updated, { mode: Number.parseInt(stats.mode, 8) & 0o7777 });
       await chmod(updatedPath, Number.parseInt(stats.mode, 8) & 0o7777);
-      await this.put(updatedPath, temporaryPath, stats.mode);
       temporaryCreated = true;
+      await this.put(updatedPath, temporaryPath, stats.mode);
       await this.get(path, latestPath);
       if (sha256(await readFile(latestPath)) !== currentHash) throw new McpOpsError('FILE_CHANGED', 'The file changed while the patch was being prepared. Read it again and retry.');
       if (backupPath) await this.put(originalPath, backupPath, stats.mode);
-      await this.runSftp(`rename ${quoteSftpPath(temporaryPath)} ${quoteSftpPath(path)}\n`);
+      await this.channel.renameFile(temporaryPath, path, 60_000);
       temporaryCreated = false;
       await this.get(path, verifiedPath);
       const finalHash = sha256(await readFile(verifiedPath));
@@ -292,17 +304,17 @@ export class OpenSshFileOperations {
         backup_path: backupPath,
       };
     } finally {
-      if (temporaryCreated) await this.runSftp(`-rm ${quoteSftpPath(temporaryPath)}\n`).catch(() => undefined);
+      if (temporaryCreated) await this.channel.removeFile(temporaryPath).catch(() => undefined);
       await rm(localDirectory, { recursive: true, force: true });
     }
   }
 
   private async get(remotePath: string, localPath: string, preserveMode = true, timeoutMs = 60_000): Promise<void> {
-    await this.runSftp(`get ${preserveMode ? '-p ' : ''}${quoteSftpPath(remotePath)} ${quoteSftpPath(localPath)}\n`, timeoutMs);
+    await this.channel.getFile(remotePath, localPath, preserveMode, timeoutMs);
   }
 
   private async put(localPath: string, remotePath: string, mode: string, timeoutMs = 60_000): Promise<void> {
-    await this.runSftp(`put ${quoteSftpPath(localPath)} ${quoteSftpPath(remotePath)}\nchmod ${mode} ${quoteSftpPath(remotePath)}\n`, timeoutMs);
+    await this.channel.putFile(localPath, remotePath, mode, timeoutMs);
   }
 
   private async remoteExists(path: string): Promise<boolean> {
@@ -319,11 +331,20 @@ export class OpenSshFileOperations {
     return hash.toLowerCase();
   }
 
-  private async runSftp(batch: string, timeoutMs = 60_000): Promise<ProcessResult> {
-    const result = await this.channel.sftp(batch, timeoutMs, 1_048_576);
+}
+
+function nativeFileChannel(channel: OpenSshChannel): FileChannel {
+  const run = async (batch: string, timeoutMs = 60_000) => {
+    const result = await channel.sftp(batch, timeoutMs, 1_048_576);
     if (result.exit_code !== 0 || result.timed_out) throw operationError('SFTP_OPERATION_FAILED', 'remote path', result);
-    return result;
-  }
+  };
+  return {
+    execRaw: (...args) => channel.execRaw(...args),
+    getFile: (remote, local, preserve, timeout) => run(`get ${preserve ? '-p ' : ''}${quoteSftpPath(remote)} ${quoteSftpPath(local)}\n`, timeout),
+    putFile: (local, remote, mode, timeout) => run(`put ${quoteSftpPath(local)} ${quoteSftpPath(remote)}\nchmod ${mode} ${quoteSftpPath(remote)}\n`, timeout),
+    renameFile: (source, destination, timeout) => run(`rename ${quoteSftpPath(source)} ${quoteSftpPath(destination)}\n`, timeout),
+    removeFile: (path) => run(`-rm ${quoteSftpPath(path)}\n`),
+  };
 }
 
 export function quoteSftpPath(path: string): string {

@@ -1,13 +1,18 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
 import { createConnection } from 'node:net';
+import { promptSecret } from './password-prompt.js';
 
 const prompt = process.argv[2] ?? '';
 const hostKeyPrompt = /authenticity of host/i.test(prompt) && /SHA256:[A-Za-z0-9+/]+/.test(prompt);
 const brokerAllPrompts = process.env.MCP_SSH_OPS_ASKPASS_MODE === 'broker';
 
 if (!hostKeyPrompt && !brokerAllPrompts) {
-  process.exitCode = await runNativeAskpass(prompt);
+  process.env.SSH_ASKPASS = process.env.MCP_SSH_OPS_NATIVE_ASKPASS ?? '';
+  try {
+    process.stdout.write(`${await promptSecret('MCP SSH Ops', prompt)}\n`);
+  } catch {
+    process.exitCode = 1;
+  }
 } else {
   const socketPath = process.env.MCP_SSH_OPS_ASKPASS_SOCKET;
   const contextId = process.env.MCP_SSH_OPS_ASKPASS_CONTEXT;
@@ -16,32 +21,6 @@ if (!hostKeyPrompt && !brokerAllPrompts) {
   } else {
     process.exitCode = await requestBroker(socketPath, contextId, prompt);
   }
-}
-
-async function runNativeAskpass(message: string): Promise<number> {
-  const ksshaskpass = { command: 'ksshaskpass', args: [message] };
-  const zenity = { command: 'zenity', args: ['--password', '--title=MCP SSH Ops', `--text=${message}`] };
-  const kdialog = { command: 'kdialog', args: ['--title', 'MCP SSH Ops', '--password', message] };
-  const commands = process.env.XDG_CURRENT_DESKTOP?.toUpperCase().includes('KDE')
-    ? [ksshaskpass, kdialog, zenity]
-    : [zenity, ksshaskpass, kdialog];
-  for (const { command, args } of commands) {
-    const result = await runDialog(command, args);
-    if (result.missing) continue;
-    if (result.code === 0) process.stdout.write(result.stdout);
-    return result.code;
-  }
-  return 1;
-}
-
-function runDialog(command: string, args: string[]): Promise<{ code: number; stdout: Buffer; missing: boolean }> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { env: process.env, stdio: ['ignore', 'pipe', 'ignore'] });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.once('error', (error: NodeJS.ErrnoException) => resolve({ code: 1, stdout: Buffer.alloc(0), missing: error.code === 'ENOENT' }));
-    child.once('close', (code) => resolve({ code: code ?? 1, stdout: Buffer.concat(chunks), missing: false }));
-  });
 }
 
 function requestBroker(socketPath: string, contextId: string, message: string): Promise<number> {

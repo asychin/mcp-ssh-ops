@@ -15,7 +15,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "npm run build && tsx --test test/*.test.ts",
+    "test": "npm run build && tsx --test test/*.test.ts && npm run test:ssh2:fallback",
+    "test:ssh2:fallback": "node --require ./test/ssh2-fallback.cjs --import tsx --test test/ssh2-session.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json"
   },
   "keywords": [
@@ -43,13 +44,13 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "diff": "9.0.0",
     "ssh2": "1.17.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/client": "2.3.0",
     "@types/node": "24.10.0",
     "@types/ssh2": "1.15.5",
     "tsx": "4.23.12",

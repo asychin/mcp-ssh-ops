@@ -10,13 +10,13 @@ import type { SshProfile } from '../src/types.js';
 import { sshFingerprint } from '../src/ssh/fingerprint.js';
 import { ProfileStore } from '../src/profile-store.js';
 import { SessionManager } from '../src/ssh/session-manager.js';
-import { testPaths } from './helpers.js';
+import { testKeyPair, testPaths } from './helpers.js';
 
 const { Server, utils } = ssh2;
 
 test('uses native ControlMaster, explicit host trust, RAM password reuse, and clone isolation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mcp-ssh-ops-openssh-'));
-  const hostPair = utils.generateKeyPairSync('ed25519');
+  const hostPair = testKeyPair();
   const hostParsed = utils.parseKey(hostPair.private);
   assert.ok(!(hostParsed instanceof Error));
   const fingerprint = sshFingerprint(hostParsed.getPublicSSH());
@@ -68,7 +68,7 @@ test('uses native ControlMaster, explicit host trust, RAM password reuse, and cl
     };
 
     await assert.rejects(manager.createSession(profile, 'first'), new RegExp(`HOST_KEY_UNKNOWN.*${fingerprint.replace(/[+]/g, '\\+')}`));
-    const approved = manager.trustHost('127.0.0.1', address.port, fingerprint);
+    const approved = await manager.trustHost('127.0.0.1', address.port, fingerprint);
     assert.equal(approved.status, 'approved');
     const first = await manager.createSession(profile, 'first');
     assert.match(first.session_id, /^first \| test-user@127\.0\.0\.1:\d+ \| [0-9a-f]{8}$/);
@@ -95,7 +95,7 @@ test('uses native ControlMaster, explicit host trust, RAM password reuse, and cl
     assert.equal(authenticatedConnections, 3);
     assert.equal(manager.listSessions().length, 3);
     assert.deepEqual(commands, ['true', 'first-command', 'second-command', 'true', 'true']);
-    assert.match(await readFile(paths.knownHostsFile, 'utf8'), /ssh-ed25519/);
+    assert.ok((await readFile(paths.knownHostsFile, 'utf8')).includes(hostParsed.type));
     await manager.closeSession(first.session_id);
     await manager.closeSession(clone.session_id);
     await manager.closeSession(independent.session_id);
@@ -108,8 +108,8 @@ test('uses native ControlMaster, explicit host trust, RAM password reuse, and cl
 
 test('honors native ProxyJump and verifies jump and target host keys independently', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mcp-ssh-ops-jump-'));
-  const jumpPair = utils.generateKeyPairSync('ed25519');
-  const targetPair = utils.generateKeyPairSync('ed25519');
+  const jumpPair = testKeyPair();
+  const targetPair = testKeyPair();
   const jumpParsed = utils.parseKey(jumpPair.private);
   const targetParsed = utils.parseKey(targetPair.private);
   assert.ok(!(jumpParsed instanceof Error));
@@ -193,9 +193,9 @@ test('honors native ProxyJump and verifies jump and target host keys independent
     const profile = await profiles.get('target');
 
     await assert.rejects(manager.createSession(profile), new RegExp(`HOST_KEY_UNKNOWN.*${jumpFingerprint.replace(/[+]/g, '\\+')}`));
-    manager.trustHost('127.0.0.1', jumpAddress.port, jumpFingerprint);
+    await manager.trustHost('127.0.0.1', jumpAddress.port, jumpFingerprint);
     await assert.rejects(manager.createSession(profile), new RegExp(`HOST_KEY_UNKNOWN.*${targetFingerprint.replace(/[+]/g, '\\+')}`));
-    manager.trustHost('127.0.0.1', targetAddress.port, targetFingerprint);
+    await manager.trustHost('127.0.0.1', targetAddress.port, targetFingerprint);
     const session = await manager.createSession(profile, 'via-jump');
     const promptsAfterConnect = promptCount;
     const execution = await manager.exec(session.session_id, {
@@ -222,7 +222,7 @@ test('honors native ProxyJump and verifies jump and target host keys independent
 
 test('passes production native askpass output directly to OpenSSH', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'mcp-ssh-ops-native-askpass-'));
-  const hostPair = utils.generateKeyPairSync('ed25519');
+  const hostPair = testKeyPair();
   const hostParsed = utils.parseKey(hostPair.private);
   assert.ok(!(hostParsed instanceof Error));
   const fingerprint = sshFingerprint(hostParsed.getPublicSSH());
@@ -245,6 +245,7 @@ test('passes production native askpass output directly to OpenSSH', async () => 
   });
   let manager: SessionManager | undefined;
   const originalPath = process.env.PATH;
+  const originalPrompt = { SSH_ASKPASS: process.env.SSH_ASKPASS, DISPLAY: process.env.DISPLAY };
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
@@ -260,6 +261,8 @@ test('passes production native askpass output directly to OpenSSH', async () => 
       await chmod(fakeAskpass, 0o700);
     }
     process.env.PATH = `${fakeBin}:${originalPath ?? ''}`;
+    process.env.SSH_ASKPASS = join(fakeBin, 'ksshaskpass');
+    process.env.DISPLAY = ':test';
     const paths = testPaths(directory);
     const profiles = new ProfileStore(paths);
     await isolateTestKnownHosts(profiles, paths);
@@ -272,12 +275,15 @@ test('passes production native askpass output directly to OpenSSH', async () => 
       connect_timeout_ms: 5_000,
     };
     await assert.rejects(manager.createSession(profile), /HOST_KEY_UNKNOWN/);
-    manager.trustHost('127.0.0.1', address.port, fingerprint);
+    await manager.trustHost('127.0.0.1', address.port, fingerprint);
     const session = await manager.createSession(profile, 'native-askpass');
     assert.equal(session.status, 'connected');
     await manager.closeSession(session.session_id);
   } finally {
     process.env.PATH = originalPath;
+    for (const [key, value] of Object.entries(originalPrompt)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
     await manager?.closeAll();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
